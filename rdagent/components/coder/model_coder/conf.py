@@ -3,14 +3,14 @@ from typing import Optional
 from pydantic_settings import SettingsConfigDict
 
 from rdagent.components.coder.CoSTEER.config import CoSTEERSettings
-from rdagent.utils.env import Env, QlibCondaConf, QlibCondaEnv, QTDockerEnv
+from rdagent.utils.env import Env, KubernetesConf, KubernetesEnv, QlibCondaConf, QlibCondaEnv, QTDockerEnv
 
 
 class ModelCoSTEERSettings(CoSTEERSettings):
     model_config = SettingsConfigDict(env_prefix="MODEL_CoSTEER_")
 
-    env_type: str = "conda"  # or "docker"
-    """Environment to run model code in coder and runner: 'conda' for local conda env, 'docker' for Docker container"""
+    env_type: str = "conda"  # or "docker" or "kubernetes"
+    """Environment to run model code in coder and runner: 'conda' for local conda env, 'docker' for Docker container, 'kubernetes' for K8s Jobs"""
 
 
 def get_model_env(
@@ -24,6 +24,8 @@ def get_model_env(
         env = QTDockerEnv()
     elif conf.env_type == "conda":
         env = QlibCondaEnv(conf=QlibCondaConf())
+    elif conf.env_type == "kubernetes":
+        env = KubernetesEnv(conf=KubernetesConf())
     else:
         raise ValueError(f"Unknown env type: {conf.env_type}")
 

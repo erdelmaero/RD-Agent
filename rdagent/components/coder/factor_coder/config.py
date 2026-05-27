@@ -4,11 +4,14 @@ from typing import Optional
 from pydantic_settings import SettingsConfigDict
 
 from rdagent.components.coder.CoSTEER.config import CoSTEERSettings
-from rdagent.utils.env import CondaConf, Env, LocalEnv
+from rdagent.utils.env import CondaConf, Env, KubernetesConf, KubernetesEnv, LocalEnv
 
 
 class FactorCoSTEERSettings(CoSTEERSettings):
     model_config = SettingsConfigDict(env_prefix="FACTOR_CoSTEER_")
+
+    env_type: str = "conda"
+    """Environment to run factor code: 'conda' for local conda env, 'kubernetes' for K8s Jobs"""
 
     data_folder: str = "git_ignore_folder/factor_implementation_source_data"
     """Path to the folder containing financial data (default is fundamental data in Qlib)"""
@@ -36,8 +39,10 @@ def get_factor_env(
     enable_cache: Optional[bool] = None,
 ) -> Env:
     conf = FactorCoSTEERSettings()
-    if hasattr(conf, "python_bin"):
-        env = LocalEnv(conf=(CondaConf(conda_env_name=os.environ.get("CONDA_DEFAULT_ENV"))))
+    if conf.env_type == "kubernetes":
+        env = KubernetesEnv(conf=KubernetesConf())
+    else:
+        env = LocalEnv(conf=(CondaConf(conda_env_name=os.environ.get("CONDA_DEFAULT_ENV", "base"))))
     env.conf.extra_volumes = extra_volumes.copy()
     env.conf.running_timeout_period = running_timeout_period
     if enable_cache is not None:

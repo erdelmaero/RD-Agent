@@ -11,7 +11,6 @@ import contextlib
 import json
 import os
 import pickle
-import re
 import select
 import shutil
 import subprocess
@@ -25,15 +24,13 @@ from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
-    Deque,
-    Dict,
     Generator,
     Generic,
     Iterable,
     Mapping,
-    Optional,
     TypeVar,
     cast,
 )
@@ -42,7 +39,7 @@ import docker  # type: ignore[import-untyped]
 import docker.models  # type: ignore[import-untyped]
 import docker.models.containers  # type: ignore[import-untyped]
 import docker.types  # type: ignore[import-untyped]
-from pydantic import BaseModel, model_validator
+from pydantic import model_validator
 from pydantic_settings import SettingsConfigDict
 from rich import print
 from rich.console import Console
@@ -62,6 +59,13 @@ from rdagent.utils import filter_redundant_text
 from rdagent.utils.agent.tpl import T
 from rdagent.utils.fmt import shrink_text
 from rdagent.utils.workflow import wait_retry
+
+if TYPE_CHECKING:
+    # The ``kubernetes`` package is an optional dependency (extras: ``rdagent[k8s]``).
+    # Importing it at module top-level would force every rdagent user to install it,
+    # so we only reference it for static type checking.  At runtime, ``KubernetesEnv``
+    # imports it lazily inside methods so this module remains importable without it.
+    pass  # type: ignore[import-untyped]
 
 CacheKeyFunc = Callable[[str | Path], list[list[str]]]
 
@@ -188,7 +192,7 @@ class EnvConf(ExtendedBaseSettings):
         return [
             [str(path.relative_to(local_path)), path.read_text()]
             for path in sorted(
-                list(local_path.rglob("*.py")) + list(local_path.rglob("*.csv")) + list(local_path.rglob("*.yaml"))
+                list(local_path.rglob("*.py")) + list(local_path.rglob("*.csv")) + list(local_path.rglob("*.yaml")),
             )
         ]
 
@@ -218,7 +222,7 @@ class EnvResult:
     full_stdout: str
     exit_code: int
     running_time: float
-    stored_full_stdout_to_truncated_stdout: Dict[str, str]
+    stored_full_stdout_to_truncated_stdout: dict[str, str]
 
     def __init__(self, stdout: str, exit_code: int, running_time: float):
         self.full_stdout = stdout
@@ -273,7 +277,7 @@ class Env(Generic[ASpecificEnvConf]):
                     )
 
     def unzip_a_file_into_a_folder(
-        self, zip_file_path: str, folder_path: str, files_to_extract: list[str] | None = None
+        self, zip_file_path: str, folder_path: str, files_to_extract: list[str] | None = None,
     ) -> None:
         """
         Unzip a file into a folder, use zipfile instead of subprocess
@@ -339,7 +343,7 @@ class Env(Generic[ASpecificEnvConf]):
                 logger.info(f"Running time: {end - start} seconds")
                 if self.conf.running_timeout_period is not None and end - start + 1 >= self.conf.running_timeout_period:
                     logger.warning(
-                        f"The running time exceeds {self.conf.running_timeout_period} seconds, so the process is killed."
+                        f"The running time exceeds {self.conf.running_timeout_period} seconds, so the process is killed.",
                     )
                     log_output += f"\n\nThe running time exceeds {self.conf.running_timeout_period} seconds, so the process is killed."
                 return EnvResult(log_output, return_code, end - start)
@@ -347,7 +351,7 @@ class Env(Generic[ASpecificEnvConf]):
                 if retry_index == self.conf.retry_count:
                     raise
                 logger.warning(
-                    f"Error while running the container: {e}, current try index: {retry_index + 1}, {self.conf.retry_count - retry_index - 1} retries left."
+                    f"Error while running the container: {e}, current try index: {retry_index + 1}, {self.conf.retry_count - retry_index - 1} retries left.",
                 )
                 time.sleep(self.conf.retry_wait_seconds)
         raise RuntimeError  # for passing CI
@@ -490,7 +494,7 @@ class Env(Generic[ASpecificEnvConf]):
         key = md5_hash(
             json.dumps(cache_key_extra)
             + json.dumps({"entry": entry, "running_extra_volume": dict(running_extra_volume)})
-            + json.dumps({"extra_volumes": self.conf.extra_volumes})
+            + json.dumps({"extra_volumes": self.conf.extra_volumes}),
             # + json.dumps(data_key)
         )
         if Path(target_folder / f"{key}.pkl").exists() and Path(target_folder / f"{key}.zip").exists():
@@ -541,7 +545,7 @@ class Env(Generic[ASpecificEnvConf]):
         local_path: str,
         env: dict | None = None,
         running_extra_volume: Mapping = MappingProxyType({}),
-        code_dump_file_py_name: Optional[str] = None,
+        code_dump_file_py_name: str | None = None,
     ) -> tuple[str, list]:
         """
         Dump the code into the local path and run the code.
@@ -766,7 +770,7 @@ class MLECondaConf(CondaConf):
 ## Docker Environment -----
 class DockerConf(EnvConf):
     build_from_dockerfile: bool = False
-    dockerfile_folder_path: Optional[Path] = (
+    dockerfile_folder_path: Path | None = (
         None  # the path to the dockerfile optional path provided when build_from_dockerfile is False
     )
     image: str  # the image you want to build
@@ -822,7 +826,7 @@ class DockerConf(EnvConf):
                 for key in self._exclude_path_keys
                 if (
                     name := extract_dir_name_from_path_config(
-                        T(f"scenarios.{self._scenario_name}.share:scen.{key}").r()
+                        T(f"scenarios.{self._scenario_name}.share:scen.{key}").r(),
                     )
                 )
             ]
@@ -1021,7 +1025,7 @@ class QlibDockerConf(DockerConf):
         str(Path("~/.qlib/").expanduser().resolve().absolute()): {
             "bind": "/root/.qlib/",
             "mode": "rw",
-        }
+        },
     }
     shm_size: str | None = "16g"
     enable_gpu: bool = True
@@ -1352,7 +1356,7 @@ class DockerEnv(Env[DockerConf]):
         # Process logs with tail mode
         if use_tail_mode:
 
-            log_buffer: Deque[str] = deque(maxlen=self.conf.terminal_tail_lines)
+            log_buffer: deque[str] = deque(maxlen=self.conf.terminal_tail_lines)
 
             def format_tail_display() -> Text:
                 text = Text()
@@ -1575,3 +1579,710 @@ class BenchmarkDockerEnv(DockerEnv):
 
     def __init__(self, conf: DockerConf = BenchmarkDockerConf()):
         super().__init__(conf)
+
+
+## Kubernetes Environment -----
+#
+# ``KubernetesEnv`` executes generated code as native Kubernetes Jobs instead of
+# Docker containers.  It is intended for self-hosted clusters where running
+# Docker-in-Docker is undesirable for security or scheduling reasons.
+#
+# Design constraints:
+#   * The ``kubernetes`` Python client is an OPTIONAL dependency (extras: ``k8s``).
+#     Importing this module without it must succeed; only constructing
+#     ``KubernetesEnv`` requires the client to be installed.
+#   * In-cluster builds are NOT supported in this initial version.  Pre-build
+#     images via CI and reference them by registry tag.
+#   * Volumes use PersistentVolumeClaims, not host-path bind mounts.  Workspaces
+#     are isolated per run using a ``subPath`` under a single RWX PVC.
+
+_K8S_IMPORT_ERROR_HINT = (
+    "The 'kubernetes' package is required for KubernetesEnv. "
+    "Install the optional extras with: pip install 'rdagent[k8s]'"
+)
+
+
+def _import_kubernetes() -> Any:
+    """
+    Lazily import the kubernetes package.
+
+    Raises:
+        ImportError: If the ``kubernetes`` package is not installed, with a
+            message pointing the user to the ``rdagent[k8s]`` extras.
+    """
+    try:
+        import kubernetes  # type: ignore[import-untyped]  # noqa: PLC0415
+    except ImportError as exc:  # pragma: no cover - exercised in tests via mocking
+        raise ImportError(_K8S_IMPORT_ERROR_HINT) from exc
+    return kubernetes
+
+
+class KubernetesConf(EnvConf):
+    """
+    Configuration for :class:`KubernetesEnv`.
+
+    Mirrors the runtime-relevant fields of :class:`DockerConf` (image, resource
+    limits, GPU toggle, timeouts) while adding Kubernetes-specific fields for
+    Job placement, RBAC, persistent volumes, and image pull secrets.
+
+    Volume handling differs from ``DockerConf``: host-path bind mounts are not
+    supported.  All persistent data must be declared via :attr:`extra_pvcs`,
+    which maps a PersistentVolumeClaim name to a mount path inside the
+    workload pod.  ``extra_volumes`` (inherited from :class:`EnvConf`) is
+    accepted only when its values are ``{pvc_name: mount_path}`` strings; any
+    host-path key (matching ``/``) will raise a ``ValueError`` at run time.
+    """
+
+    # --- image ---
+    image: str  # the container image to run; must be pullable from the registry
+    mount_path: str  # path inside the container for the workspace folder
+    default_entry: str  # default command (matches DockerConf semantics)
+
+    # --- workspace volume ---
+    namespace: str = "default"
+    """Kubernetes namespace in which Jobs will be created."""
+
+    workspace_pvc: str = ""
+    """Name of the RWX PersistentVolumeClaim used to share the workspace folder
+    between the agent process and the spawned Job pods.  Must be created
+    out-of-band (e.g. via Helm or kustomize) before running.
+
+    Empty string disables workspace sharing — useful for trivial commands like
+    ``nvidia-smi`` that do not need a workspace mount."""
+
+    workspace_subpath_prefix: str = "rdagent-runs"
+    """Sub-directory within ``workspace_pvc`` under which per-run sub-paths are
+    created.  Useful when the PVC is shared with other workloads."""
+
+    # --- extra mounts ---
+    extra_pvcs: dict[str, str] = {}
+    """Mapping of additional PersistentVolumeClaim names to mount paths.
+
+    Example::
+
+        extra_pvcs = {"qlib-data": "/qlib-data"}
+
+    All extra PVCs are mounted read-only by default to mirror
+    ``DockerConf.extra_volume_mode``."""
+
+    extra_volume_mode: str = "ro"
+    """Mount mode for entries in :attr:`extra_pvcs` ('ro' or 'rw')."""
+
+    # --- pod scheduling / security ---
+    service_account: str | None = None
+    """ServiceAccount name for the Job pods.  When ``None``, the namespace
+    default is used."""
+
+    node_selector: dict[str, str] = {}
+    """Optional ``spec.nodeSelector`` for the Job pods."""
+
+    tolerations: list[dict] = []
+    """Optional ``spec.tolerations`` for the Job pods.  Each entry follows the
+    Kubernetes API shape (``{key, operator, value, effect, tolerationSeconds}``)."""
+
+    image_pull_secrets: list[str] = []
+    """List of ``imagePullSecrets`` references for private registries."""
+
+    pod_security_context: dict | None = None
+    """Optional ``spec.securityContext`` for the Job pods."""
+
+    # --- resources ---
+    network: str | None = None
+    """Pod-level network configuration (currently informational only — Kubernetes
+    Job pods always use the cluster network).  Accepted for parity with
+    ``DockerConf``."""
+
+    shm_size: str | None = None
+    """If set, an additional ``emptyDir`` volume with ``medium=Memory`` is mounted
+    at ``/dev/shm`` with the given size limit."""
+
+    enable_gpu: bool = True
+    """If ``True``, requests :attr:`gpu_resource_name` resources for the Job.
+    GPU count defaults to 1; override with the ``K8S_GPU_COUNT`` env var or by
+    subclassing."""
+
+    gpu_resource_name: str = "nvidia.com/gpu"
+    """Resource name for GPU scheduling.  Override for AMD (``amd.com/gpu``) or
+    other accelerators."""
+
+    gpu_count: int = 1
+    """Number of GPUs to request when :attr:`enable_gpu` is ``True``."""
+
+    mem_limit: str | None = "48Gi"
+    """Pod memory limit (e.g. ``"48Gi"``, ``"4096Mi"``).  Set ``None`` to omit."""
+
+    mem_request: str | None = None
+    """Pod memory request.  Defaults to :attr:`mem_limit` when ``None``."""
+
+    cpu_count: int | None = None
+    """CPU limit (whole cores).  Set ``None`` to omit."""
+
+    cpu_request: str | None = None
+    """CPU request (e.g. ``"500m"``).  When ``None``, no request is set and
+    Kubernetes' default request equals the limit."""
+
+    # --- lifecycle ---
+    running_timeout_period: int | None = 3600  # 1 hour, mirrors DockerConf
+    """Sets ``spec.activeDeadlineSeconds`` on the Job.  ``None`` disables the
+    deadline (not recommended)."""
+
+    job_ttl_seconds: int = 3600
+    """``spec.ttlSecondsAfterFinished`` — how long completed Jobs linger before
+    Kubernetes garbage-collects them."""
+
+    image_pull_policy: str = "IfNotPresent"
+    """``imagePullPolicy`` for the Job container.  Use ``Always`` to force
+    re-pulls when the registry tag is mutable (e.g. ``:latest``)."""
+
+    # --- behavior ---
+    save_logs_to_file: bool = True
+    terminal_tail_lines: int = 20
+
+    enable_cache: bool = True
+    retry_count: int = 5
+    retry_wait_seconds: int = 10
+
+    # --- auth ---
+    kubeconfig_path: str | None = None
+    """Explicit kubeconfig path.  When ``None`` the standard discovery rules
+    apply: in-cluster config first (when running inside a pod), then
+    ``$KUBECONFIG``, then ``~/.kube/config``."""
+
+    in_cluster: bool | None = None
+    """When ``True``, force in-cluster config (requires running inside a pod
+    with a mounted ServiceAccount token).  When ``False``, force kubeconfig
+    loading.  ``None`` (default) auto-detects."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="K8S_",
+        env_parse_none_str="None",
+    )
+
+
+class KubernetesEnv(Env[KubernetesConf]):
+    """
+    Execute generated code as Kubernetes Jobs.
+
+    This environment is a drop-in alternative to :class:`DockerEnv` for clusters
+    where Docker-in-Docker is unavailable or undesirable.  It is best suited for
+    deployments where the rdagent process itself runs inside the same
+    Kubernetes cluster and shares an RWX PersistentVolumeClaim with the spawned
+    Job pods.
+
+    See ``docs/scens/kubernetes_env.rst`` for prerequisites and configuration
+    examples.
+    """
+
+    # Mark this attribute so callers can detect whether the backend is K8s.
+    _backend_kind: str = "kubernetes"
+
+    def __init__(self, conf: KubernetesConf) -> None:
+        super().__init__(conf)
+        # Trigger the ImportError early with the actionable hint instead of
+        # waiting until ``prepare()``/``_run()`` is called.
+        _import_kubernetes()
+        self._api_clients: dict[str, Any] = {}
+
+    # ------------------------------------------------------------------ API
+
+    def prepare(self, *args: Any, **kwargs: Any) -> None:
+        """
+        Validate that the configured image can be used.
+
+        Unlike :meth:`DockerEnv.prepare`, this method never builds images.
+        Pre-build all images in CI and reference them by registry tag.
+
+        Raises:
+            NotImplementedError: If the configuration requests building from a
+                Dockerfile (which is not supported by ``KubernetesEnv`` —
+                a Kaniko/Buildah-based variant could add this in the future).
+            ValueError: If required configuration fields are missing.
+        """
+        if getattr(self.conf, "build_from_dockerfile", False):
+            raise NotImplementedError(
+                "KubernetesEnv does not support 'build_from_dockerfile'. "
+                "Pre-build the image in CI and set 'image' to its registry tag.",
+            )
+        if not self.conf.image:
+            raise ValueError("KubernetesConf.image must be set.")
+        # Touch the API client to surface auth/connectivity issues early.
+        self._get_batch_api()
+        logger.info(f"KubernetesEnv ready (namespace={self.conf.namespace}, image={self.conf.image})")
+
+    def refresh_env(self) -> None:
+        """
+        No-op for the Kubernetes backend.
+
+        With ``imagePullPolicy: Always`` (or by changing the image tag) the
+        kubelet pulls a fresh image on the next Job submission, so no extra
+        action is required here.  Provided for interface parity with
+        :class:`DockerEnv`.
+        """
+        logger.info(
+            "KubernetesEnv.refresh_env() is a no-op; "
+            "configure 'image_pull_policy=\"Always\"' or change the image tag to force a re-pull.",
+        )
+
+    # ----------------------------------------------------------- internals
+
+    def _get_api_client(self) -> Any:
+        """Load Kubernetes auth (in-cluster first, then kubeconfig) once and cache."""
+        if "api" in self._api_clients:
+            return self._api_clients["api"]
+        kubernetes = _import_kubernetes()
+        cfg = kubernetes.config
+        try:
+            if self.conf.in_cluster is True:
+                cfg.load_incluster_config()
+            elif self.conf.in_cluster is False:
+                cfg.load_kube_config(config_file=self.conf.kubeconfig_path)
+            else:
+                try:
+                    cfg.load_incluster_config()
+                except cfg.config_exception.ConfigException:
+                    cfg.load_kube_config(config_file=self.conf.kubeconfig_path)
+        except Exception as exc:  # pragma: no cover - handled by integration tests
+            raise RuntimeError(f"Failed to load Kubernetes configuration: {exc}") from exc
+
+        # Workaround for kubernetes-client v36 which mis-sets the default API key
+        # name when load_incluster_config is used (see kubernetes-client/python#2475).
+        configuration = kubernetes.client.Configuration.get_default_copy()
+        if "authorization" in configuration.api_key:
+            configuration.api_key["BearerToken"] = configuration.api_key["authorization"]
+        api_client = kubernetes.client.ApiClient(configuration)
+        self._api_clients["api"] = api_client
+        return api_client
+
+    def _get_batch_api(self) -> Any:
+        kubernetes = _import_kubernetes()
+        if "batch" not in self._api_clients:
+            self._api_clients["batch"] = kubernetes.client.BatchV1Api(self._get_api_client())
+        return self._api_clients["batch"]
+
+    def _get_core_api(self) -> Any:
+        kubernetes = _import_kubernetes()
+        if "core" not in self._api_clients:
+            self._api_clients["core"] = kubernetes.client.CoreV1Api(self._get_api_client())
+        return self._api_clients["core"]
+
+    @staticmethod
+    def _generate_run_id() -> str:
+        """Short unique identifier suitable for embedding in Kubernetes object names."""
+        return uuid.uuid4().hex[:12]
+
+    def _job_name(self, run_id: str) -> str:
+        """Build a DNS-1123-compliant Job name from the run id."""
+        return f"rdagent-{run_id}"
+
+    def _translate_volumes(
+        self,
+        run_id: str,
+        local_path: str | None,
+        running_extra_volume: Mapping,
+    ) -> tuple[list[Any], list[Any], str | None]:
+        """
+        Translate Docker-style volume specs into Kubernetes Volume/VolumeMount lists.
+
+        Returns:
+            Tuple of (volumes, volume_mounts, workspace_subpath) where
+            ``workspace_subpath`` is the per-run sub-directory within
+            :attr:`KubernetesConf.workspace_pvc` (or ``None`` when no workspace
+            mount is configured).
+
+        Raises:
+            ValueError: If :attr:`KubernetesConf.extra_volumes` or
+                ``running_extra_volume`` contains a host-path bind mount.
+        """
+        kubernetes = _import_kubernetes()
+        V = kubernetes.client
+
+        volumes: list[Any] = []
+        mounts: list[Any] = []
+        workspace_subpath: str | None = None
+
+        # 1. Workspace PVC + subPath
+        if local_path is not None and self.conf.workspace_pvc:
+            workspace_subpath = f"{self.conf.workspace_subpath_prefix}/{run_id}"
+            volumes.append(
+                V.V1Volume(
+                    name="workspace",
+                    persistent_volume_claim=V.V1PersistentVolumeClaimVolumeSource(
+                        claim_name=self.conf.workspace_pvc,
+                    ),
+                ),
+            )
+            mounts.append(
+                V.V1VolumeMount(
+                    name="workspace",
+                    mount_path=self.conf.mount_path,
+                    sub_path=workspace_subpath,
+                ),
+            )
+
+        # 2. extra_pvcs — declared mapping of PVC name → mount path
+        ro = self.conf.extra_volume_mode == "ro"
+        for idx, (pvc_name, mount_path) in enumerate(self.conf.extra_pvcs.items()):
+            vol_name = f"extra-pvc-{idx}"
+            volumes.append(
+                V.V1Volume(
+                    name=vol_name,
+                    persistent_volume_claim=V.V1PersistentVolumeClaimVolumeSource(claim_name=pvc_name),
+                ),
+            )
+            mounts.append(
+                V.V1VolumeMount(
+                    name=vol_name,
+                    mount_path=mount_path,
+                    read_only=ro,
+                ),
+            )
+
+        # 3. Reject Docker-style host bind mounts from extra_volumes / running_extra_volume.
+        for source, _spec in {**self.conf.extra_volumes, **running_extra_volume}.items():
+            if isinstance(source, str) and (source.startswith("/") or source.startswith(".")):
+                raise ValueError(
+                    "KubernetesEnv does not support host-path bind mounts. "
+                    f"Got host path '{source}'. Declare a PersistentVolumeClaim "
+                    "via KubernetesConf.extra_pvcs={'<pvc-name>': '<mount-path>'} instead.",
+                )
+
+        # 4. Optional /dev/shm sized via shm_size.
+        if self.conf.shm_size:
+            volumes.append(
+                V.V1Volume(
+                    name="dshm",
+                    empty_dir=V.V1EmptyDirVolumeSource(medium="Memory", size_limit=self.conf.shm_size),
+                ),
+            )
+            mounts.append(V.V1VolumeMount(name="dshm", mount_path="/dev/shm"))
+
+        return volumes, mounts, workspace_subpath
+
+    def _build_resources(self) -> Any:
+        """Build a ``V1ResourceRequirements`` object from the configured limits."""
+        kubernetes = _import_kubernetes()
+        V = kubernetes.client
+
+        limits: dict[str, str] = {}
+        requests: dict[str, str] = {}
+        if self.conf.mem_limit:
+            limits["memory"] = self.conf.mem_limit
+            requests["memory"] = self.conf.mem_request or self.conf.mem_limit
+        if self.conf.cpu_count is not None:
+            limits["cpu"] = str(self.conf.cpu_count)
+            if self.conf.cpu_request:
+                requests["cpu"] = self.conf.cpu_request
+        if self.conf.enable_gpu and self.conf.gpu_count > 0:
+            limits[self.conf.gpu_resource_name] = str(self.conf.gpu_count)
+        if not limits and not requests:
+            return None
+        return V.V1ResourceRequirements(limits=limits or None, requests=requests or None)
+
+    def _build_job_spec(
+        self,
+        run_id: str,
+        entry: str | None,
+        env: dict,
+        volumes: list[Any],
+        volume_mounts: list[Any],
+    ) -> Any:
+        """Programmatically build a ``V1Job`` for the given run."""
+        kubernetes = _import_kubernetes()
+        V = kubernetes.client
+
+        entry_str = entry if entry is not None else self.conf.default_entry
+        # We deliberately do NOT wrap with ``timeout`` like DockerEnv does;
+        # Kubernetes' ``activeDeadlineSeconds`` enforces the timeout instead.
+        container_command = ["bash", "-c", entry_str]
+
+        container = V.V1Container(
+            name="workload",
+            image=self.conf.image,
+            image_pull_policy=self.conf.image_pull_policy,
+            command=container_command,
+            env=[V.V1EnvVar(name=k, value=str(v)) for k, v in env.items()],
+            volume_mounts=volume_mounts or None,
+            resources=self._build_resources(),
+            working_dir=self.conf.mount_path if any(m.mount_path == self.conf.mount_path for m in volume_mounts) else None,
+        )
+
+        pod_spec_kwargs: dict[str, Any] = {
+            "restart_policy": "Never",
+            "containers": [container],
+        }
+        if volumes:
+            pod_spec_kwargs["volumes"] = volumes
+        if self.conf.service_account:
+            pod_spec_kwargs["service_account_name"] = self.conf.service_account
+        if self.conf.node_selector:
+            pod_spec_kwargs["node_selector"] = self.conf.node_selector
+        if self.conf.tolerations:
+            pod_spec_kwargs["tolerations"] = [V.V1Toleration(**t) for t in self.conf.tolerations]
+        if self.conf.image_pull_secrets:
+            pod_spec_kwargs["image_pull_secrets"] = [
+                V.V1LocalObjectReference(name=n) for n in self.conf.image_pull_secrets
+            ]
+        if self.conf.pod_security_context:
+            pod_spec_kwargs["security_context"] = V.V1PodSecurityContext(**self.conf.pod_security_context)
+
+        pod_template = V.V1PodTemplateSpec(
+            metadata=V.V1ObjectMeta(
+                labels={"app.kubernetes.io/managed-by": "rdagent", "rdagent.run-id": run_id},
+            ),
+            spec=V.V1PodSpec(**pod_spec_kwargs),
+        )
+
+        job_spec_kwargs: dict[str, Any] = {
+            "template": pod_template,
+            "backoff_limit": 0,
+            "ttl_seconds_after_finished": self.conf.job_ttl_seconds,
+        }
+        if self.conf.running_timeout_period is not None:
+            job_spec_kwargs["active_deadline_seconds"] = self.conf.running_timeout_period
+
+        return V.V1Job(
+            api_version="batch/v1",
+            kind="Job",
+            metadata=V.V1ObjectMeta(
+                name=self._job_name(run_id),
+                namespace=self.conf.namespace,
+                labels={"app.kubernetes.io/managed-by": "rdagent", "rdagent.run-id": run_id},
+            ),
+            spec=V.V1JobSpec(**job_spec_kwargs),
+        )
+
+    def _stage_workspace_in(self, local_path: str | None, workspace_subpath: str | None) -> None:
+        """
+        Copy the contents of ``local_path`` into the workspace PVC subPath.
+
+        This assumes the agent process itself runs in a pod that has the same
+        :attr:`KubernetesConf.workspace_pvc` mounted at a known path -- by
+        convention, ``/<workspace_pvc>``.  If that mount is not present (for
+        example when developing locally without the PVC), this is a no-op and
+        the workspace is expected to already contain the code.
+        """
+        if local_path is None or workspace_subpath is None:
+            return
+        # The PVC is typically mounted at /<pvc-name> in the agent pod.
+        # Users who mount it elsewhere should set K8S_WORKSPACE_PVC_LOCAL_MOUNT.
+        local_mount_root = os.environ.get("K8S_WORKSPACE_PVC_LOCAL_MOUNT", f"/{self.conf.workspace_pvc}")
+        target_dir = Path(local_mount_root) / workspace_subpath
+        if not Path(local_mount_root).is_dir():
+            logger.warning(
+                f"Workspace PVC mount not found at '{local_mount_root}'. "
+                "Set K8S_WORKSPACE_PVC_LOCAL_MOUNT to the path where the PVC is mounted "
+                "in the rdagent pod, or pre-stage the workspace yourself.",
+            )
+            return
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for item in Path(local_path).iterdir():
+            dest = target_dir / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, dest)
+
+    def _stage_workspace_out(self, local_path: str | None, workspace_subpath: str | None) -> None:
+        """Copy results back from the workspace PVC subPath into ``local_path``."""
+        if local_path is None or workspace_subpath is None:
+            return
+        local_mount_root = os.environ.get("K8S_WORKSPACE_PVC_LOCAL_MOUNT", f"/{self.conf.workspace_pvc}")
+        source_dir = Path(local_mount_root) / workspace_subpath
+        if not source_dir.is_dir():
+            logger.warning(f"No workspace results found at '{source_dir}'.")
+            return
+        for item in source_dir.iterdir():
+            dest = Path(local_path) / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, dest)
+
+    def _wait_for_pod(self, job_name: str, timeout: int = 300) -> str:
+        """Wait until exactly one pod for the given job is observable and return its name."""
+        core = self._get_core_api()
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            pods = core.list_namespaced_pod(
+                namespace=self.conf.namespace,
+                label_selector=f"job-name={job_name}",
+            )
+            if pods.items:
+                return pods.items[0].metadata.name
+            time.sleep(1.0)
+        raise TimeoutError(f"Pod for Job '{job_name}' did not appear within {timeout}s.")
+
+    def _stream_pod_logs(self, pod_name: str, local_path: str | None, entry: str | None) -> str:
+        """Stream pod logs until the container terminates and return the full text."""
+        kubernetes = _import_kubernetes()
+        core = self._get_core_api()
+
+        log_output = ""
+        use_tail = self.conf.terminal_tail_lines > 0
+        tail_buffer: deque[str] = deque(maxlen=self.conf.terminal_tail_lines)
+        log_file_path: Path | None = None
+        if self.conf.save_logs_to_file and local_path:
+            logs_dir = Path(local_path) / "logs"
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            log_file_path = logs_dir / f"k8s_execution_{timestamp}.log"
+            with open(log_file_path, "w", encoding="utf-8") as f:
+                f.write("=" * 80 + "\n")
+                f.write(f"Kubernetes Execution Log\nTimestamp: {timestamp}\n")
+                f.write(f"Image: {self.conf.image}\nNamespace: {self.conf.namespace}\nPod: {pod_name}\n")
+                if entry:
+                    f.write(f"Command: {entry}\n")
+                f.write("=" * 80 + "\n\n")
+
+        # Wait for the pod to actually be Running before streaming.
+        deadline = time.time() + max(60, (self.conf.running_timeout_period or 300))
+        while time.time() < deadline:
+            pod = core.read_namespaced_pod(name=pod_name, namespace=self.conf.namespace)
+            phase = pod.status.phase
+            if phase in ("Running", "Succeeded", "Failed"):
+                break
+            time.sleep(1.0)
+
+        w = kubernetes.watch.Watch()
+        try:
+            for line in w.stream(
+                core.read_namespaced_pod_log,
+                name=pod_name,
+                namespace=self.conf.namespace,
+                container="workload",
+                follow=True,
+                _request_timeout=self.conf.running_timeout_period,
+            ):
+                if isinstance(line, bytes):
+                    line = line.decode("utf-8", errors="replace")
+                log_output += line + "\n"
+                if use_tail:
+                    tail_buffer.append(line)
+                else:
+                    Console().print(line, markup=False)
+                if log_file_path:
+                    with open(log_file_path, "a", encoding="utf-8") as f:
+                        f.write(line + "\n")
+        except Exception as exc:
+            logger.warning(f"Log streaming for pod '{pod_name}' ended early: {exc}")
+        finally:
+            w.stop()
+
+        if use_tail and tail_buffer:
+            print(
+                f"[dim]Showing last {len(tail_buffer)}/{self.conf.terminal_tail_lines} lines:[/dim]",
+            )
+            for line in tail_buffer:
+                Console().print(line, markup=False)
+        if log_file_path:
+            print(f"[green]Full execution log saved to: {log_file_path.absolute()}[/green]")
+        return log_output
+
+    def _wait_for_job(self, job_name: str) -> tuple[int, str]:
+        """Poll Job status until completion and return (exit_code, reason)."""
+        batch = self._get_batch_api()
+        core = self._get_core_api()
+        deadline = (
+            time.time() + self.conf.running_timeout_period + 60
+            if self.conf.running_timeout_period
+            else None
+        )
+        while True:
+            if deadline and time.time() > deadline:
+                raise TimeoutError(f"Job '{job_name}' did not finish within timeout.")
+            job = batch.read_namespaced_job(name=job_name, namespace=self.conf.namespace)
+            status = job.status
+            if status.succeeded:
+                return 0, "Succeeded"
+            if status.failed:
+                # Read terminated container exit code from the pod for accuracy.
+                pods = core.list_namespaced_pod(
+                    namespace=self.conf.namespace,
+                    label_selector=f"job-name={job_name}",
+                )
+                exit_code = 1
+                reason = "Failed"
+                for pod in pods.items:
+                    for cs in pod.status.container_statuses or []:
+                        if cs.state and cs.state.terminated:
+                            exit_code = cs.state.terminated.exit_code or 1
+                            reason = cs.state.terminated.reason or reason
+                            break
+                return exit_code, reason
+            time.sleep(2.0)
+
+    def _cleanup_job(self, job_name: str) -> None:
+        """Delete the Job and its pods.  Errors (404, etc.) are logged and swallowed."""
+        kubernetes = _import_kubernetes()
+        try:
+            self._get_batch_api().delete_namespaced_job(
+                name=job_name,
+                namespace=self.conf.namespace,
+                body=kubernetes.client.V1DeleteOptions(propagation_policy="Background"),
+            )
+        except kubernetes.client.rest.ApiException as exc:
+            if exc.status != 404:
+                logger.warning(f"Failed to delete Job '{job_name}': {exc}")
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning(f"Unexpected error deleting Job '{job_name}': {exc}")
+
+    # ---------------------------------------------------------------- _run
+
+    def _run(
+        self,
+        entry: str | None = None,
+        local_path: str = ".",
+        env: dict | None = None,
+        running_extra_volume: Mapping = MappingProxyType({}),
+        **kwargs: Any,
+    ) -> tuple[str, int]:
+        """
+        Submit a Kubernetes Job, stream its logs, and return (stdout, exit_code).
+
+        Mirrors :meth:`DockerEnv._run` semantics so the rest of rdagent can use
+        either backend interchangeably.
+        """
+        if env is None:
+            env = {}
+        env.setdefault("PYTHONWARNINGS", "ignore")
+        env.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+        env.setdefault("PYTHONUNBUFFERED", "1")
+        env.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+        run_id = self._generate_run_id()
+        volumes, mounts, workspace_subpath = self._translate_volumes(run_id, local_path, running_extra_volume)
+        self._stage_workspace_in(local_path if local_path else None, workspace_subpath)
+
+        job = self._build_job_spec(run_id, entry, env, volumes, mounts)
+        job_name = job.metadata.name
+
+        batch = self._get_batch_api()
+        try:
+            batch.create_namespaced_job(namespace=self.conf.namespace, body=job)
+        except Exception as exc:
+            raise RuntimeError(f"Failed to create Kubernetes Job '{job_name}': {exc}") from exc
+
+        print(Rule(f"[bold green]K8s Job '{job_name}' submitted[/bold green]", style="dark_orange"))
+        table = Table(title="Run Info", show_header=False)
+        table.add_column("Key", style="bold cyan")
+        table.add_column("Value", style="bold magenta")
+        table.add_row("Image", self.conf.image)
+        table.add_row("Namespace", self.conf.namespace)
+        table.add_row("Job", job_name)
+        table.add_row("Entry", entry or self.conf.default_entry)
+        table.add_row("Env", "\n".join(f"{k}:{v}" for k, v in env.items()))
+        table.add_row("Volumes", "\n".join(f"{m.name}:{m.mount_path}" for m in mounts))
+        print(table)
+
+        log_output = ""
+        exit_code = 1
+        try:
+            pod_name = self._wait_for_pod(job_name)
+            log_output = self._stream_pod_logs(pod_name, local_path if local_path else None, entry)
+            exit_code, reason = self._wait_for_job(job_name)
+            print(Rule(f"[bold green]K8s Job '{job_name}' finished: {reason}[/bold green]", style="dark_orange"))
+        finally:
+            self._stage_workspace_out(local_path if local_path else None, workspace_subpath)
+            self._cleanup_job(job_name)
+
+        return log_output, exit_code

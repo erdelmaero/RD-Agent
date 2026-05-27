@@ -115,6 +115,7 @@ dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools.dynamic.optional-dependencies]
 docs = {file = ["requirements/docs.txt"]}
+k8s = {file = ["requirements/k8s.txt"]} # Kubernetes execution backend.  pip install rdagent[k8s]
 lint = {file = ["requirements/lint.txt"]}
 package = {file = ["requirements/package.txt"]}
 test = {file = ["requirements/test.txt"]}

@@ -7,12 +7,17 @@ import pandas as pd
 from jinja2 import Environment, StrictUndefined
 
 from rdagent.components.coder.factor_coder.config import FACTOR_COSTEER_SETTINGS
-from rdagent.utils.env import QTDockerEnv
+from rdagent.components.coder.model_coder.conf import ModelCoSTEERSettings
+from rdagent.utils.env import KubernetesConf, KubernetesEnv, QTDockerEnv
 
 
 def generate_data_folder_from_qlib():
     template_path = Path(__file__).parent / "factor_data_template"
-    qtde = QTDockerEnv()
+    conf = ModelCoSTEERSettings()
+    if conf.env_type == "kubernetes":
+        qtde = KubernetesEnv(conf=KubernetesConf())
+    else:
+        qtde = QTDockerEnv()
     qtde.prepare()
 
     # Run the Qlib backtest

@@ -9,7 +9,7 @@ from rdagent.components.coder.model_coder.conf import MODEL_COSTEER_SETTINGS
 from rdagent.core.experiment import Experiment, FBWorkspace
 from rdagent.core.utils import cache_with_pickle
 from rdagent.oai.llm_utils import md5_hash
-from rdagent.utils.env import KGDockerEnv, QlibCondaConf, QlibCondaEnv, QTDockerEnv
+from rdagent.utils.env import KGDockerEnv, KubernetesConf, KubernetesEnv, QlibCondaConf, QlibCondaEnv, QTDockerEnv
 
 
 class ModelTask(CoSTEERTask):
@@ -118,6 +118,8 @@ class ModelFBWorkspace(FBWorkspace):
                     qtde = QTDockerEnv()
                 elif MODEL_COSTEER_SETTINGS.env_type == "conda":
                     qtde = QlibCondaEnv(conf=QlibCondaConf())
+                elif MODEL_COSTEER_SETTINGS.env_type == "kubernetes":
+                    qtde = KubernetesEnv(conf=KubernetesConf())
                 else:
                     raise ValueError(f"Unknown env_type: {MODEL_COSTEER_SETTINGS.env_type}")
             else:

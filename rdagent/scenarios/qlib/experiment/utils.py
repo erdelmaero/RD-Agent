@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pandas as pd
 from jinja2 import Environment, StrictUndefined
-
 from rdagent.components.coder.factor_coder.config import FACTOR_COSTEER_SETTINGS
 from rdagent.components.coder.model_coder.conf import ModelCoSTEERSettings
 from rdagent.utils.env import KubernetesConf, KubernetesEnv, QTDockerEnv

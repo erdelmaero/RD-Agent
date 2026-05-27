@@ -1634,9 +1634,9 @@ class KubernetesConf(EnvConf):
     """
 
     # --- image ---
-    image: str  # the container image to run; must be pullable from the registry
-    mount_path: str  # path inside the container for the workspace folder
-    default_entry: str  # default command (matches DockerConf semantics)
+    image: str = ""  # the container image to run; must be pullable from the registry
+    mount_path: str = "/workspace"  # path inside the container for the workspace folder
+    default_entry: str = "bash run.sh"  # default command (matches DockerConf semantics)
 
     # --- workspace volume ---
     namespace: str = "default"

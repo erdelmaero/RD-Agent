@@ -31,9 +31,7 @@ class ModelTask(CoSTEERTask):
         self.variables: str = variables
         self.hyperparameters: str = hyperparameters
         self.training_hyperparameters: str = training_hyperparameters
-        self.model_type: str = (
-            model_type  # Tabular for tabular model, TimesSeries for time series model, Graph for graph model, XGBoost for XGBoost model
-        )
+        self.model_type: str = model_type  # Tabular for tabular model, TimesSeries for time series model, Graph for graph model, XGBoost for XGBoost model
         super().__init__(name=name, description=description, *args, **kwargs)
 
     def get_task_information(self):
@@ -135,7 +133,7 @@ NUM_TIMESTEPS = {num_timesteps}
 NUM_EDGES = {num_edges}
 INPUT_VALUE = {input_value}
 PARAM_INIT_VALUE = {param_init_value}
-{(Path(__file__).parent / 'model_execute_template_v1.txt').read_text()}
+{(Path(__file__).parent / "model_execute_template_v1.txt").read_text()}
 """
             elif self.target_task.version == 2:
                 dump_code = (Path(__file__).parent / "model_execute_template_v2.txt").read_text()

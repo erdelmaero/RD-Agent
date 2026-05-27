@@ -19,6 +19,7 @@ Welcome to RDAgent's documentation!
    project_framework_introduction
    ui
    research/catalog
+   kubernetes_env
    development
    api_reference
    policy

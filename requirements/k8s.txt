@@ -1,0 +1,3 @@
+# Kubernetes execution backend (KubernetesEnv).
+# Install with: pip install rdagent[k8s]
+kubernetes>=27.0,<33

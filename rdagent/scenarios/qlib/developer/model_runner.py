@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 
 from rdagent.app.qlib_rd_loop.conf import ModelBasePropSetting
@@ -60,6 +62,7 @@ class QlibModelRunner(CachedRunner[QlibModelExperiment]):
         exp.experiment_workspace.inject_files(**{"model.py": exp.sub_workspace_list[0].file_dict["model.py"]})
 
         mbps = ModelBasePropSetting()
+        qlib_region = os.environ.get("QLIB_REGION", "cn")
         env_to_use = {
             "PYTHONPATH": "./",
             "train_start": mbps.train_start,
@@ -69,6 +72,10 @@ class QlibModelRunner(CachedRunner[QlibModelExperiment]):
             "test_start": mbps.test_start,
             "feature_names": str(list(exp.base_features.keys())),
             "feature_expressions": str(list(exp.base_features.values())),
+            "qlib_region": qlib_region,
+            "qlib_data_dir": os.environ.get("QLIB_DATA_DIR_NAME", f"{qlib_region}_data"),
+            "qlib_market": os.environ.get("QLIB_MARKET", "csi300" if qlib_region == "cn" else "sp500"),
+            "qlib_benchmark": os.environ.get("QLIB_BENCHMARK", "SH000300" if qlib_region == "cn" else "^gspc"),
         }
         if mbps.test_end is not None:
             env_to_use.update({"test_end": mbps.test_end})

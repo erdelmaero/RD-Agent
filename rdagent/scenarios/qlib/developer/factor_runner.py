@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -71,6 +72,7 @@ class QlibFactorRunner(CachedRunner[QlibFactorExperiment]):
             exp.based_experiments[-1] = self.develop(exp.based_experiments[-1])
 
         fbps = FactorBasePropSetting()
+        qlib_region = os.environ.get("QLIB_REGION", "cn")
         env_to_use = {
             "PYTHONPATH": "./",
             "train_start": fbps.train_start,
@@ -80,6 +82,10 @@ class QlibFactorRunner(CachedRunner[QlibFactorExperiment]):
             "test_start": fbps.test_start,
             "feature_names": str(list(exp.base_features.keys())),
             "feature_expressions": str(list(exp.base_features.values())),
+            "qlib_region": qlib_region,
+            "qlib_data_dir": os.environ.get("QLIB_DATA_DIR_NAME", f"{qlib_region}_data"),
+            "qlib_market": os.environ.get("QLIB_MARKET", "csi300" if qlib_region == "cn" else "sp500"),
+            "qlib_benchmark": os.environ.get("QLIB_BENCHMARK", "SH000300" if qlib_region == "cn" else "^gspc"),
         }
         if fbps.test_end is not None:
             env_to_use.update({"test_end": fbps.test_end})

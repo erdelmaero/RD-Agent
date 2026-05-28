@@ -1,6 +1,9 @@
+import os
+
 import qlib
 
-qlib.init(provider_uri="~/.qlib/qlib_data/cn_data")
+qlib_region = os.environ.get("QLIB_REGION", "cn")
+qlib.init(provider_uri=f"~/.qlib/qlib_data/{qlib_region}_data")
 
 from qlib.data import D
 

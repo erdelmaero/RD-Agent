@@ -1,3 +1,4 @@
+import os
 import random
 import re
 import shutil
@@ -23,6 +24,7 @@ def generate_data_folder_from_qlib():
     execute_log = qtde.check_output(
         local_path=str(template_path),
         entry=f"python generate.py",
+        env={"QLIB_REGION": os.environ.get("QLIB_REGION", "cn")},
     )
 
     assert (Path(__file__).parent / "factor_data_template" / "daily_pv_all.h5").exists(), (

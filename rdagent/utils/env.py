@@ -41,15 +41,6 @@ import docker.models.containers  # type: ignore[import-untyped]
 import docker.types  # type: ignore[import-untyped]
 from pydantic import model_validator
 from pydantic_settings import SettingsConfigDict
-from rich import print
-from rich.console import Console
-from rich.live import Live
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.rule import Rule
-from rich.table import Table
-from rich.text import Text
-from tqdm import tqdm
-
 from rdagent.core.conf import ExtendedBaseSettings
 from rdagent.core.experiment import RD_AGENT_SETTINGS
 from rdagent.core.utils import cache_with_pickle
@@ -59,6 +50,14 @@ from rdagent.utils import filter_redundant_text
 from rdagent.utils.agent.tpl import T
 from rdagent.utils.fmt import shrink_text
 from rdagent.utils.workflow import wait_retry
+from rich import print
+from rich.console import Console
+from rich.live import Live
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.rule import Rule
+from rich.table import Table
+from rich.text import Text
+from tqdm import tqdm
 
 if TYPE_CHECKING:
     # The ``kubernetes`` package is an optional dependency (extras: ``rdagent[k8s]``).
@@ -277,7 +276,10 @@ class Env(Generic[ASpecificEnvConf]):
                     )
 
     def unzip_a_file_into_a_folder(
-        self, zip_file_path: str, folder_path: str, files_to_extract: list[str] | None = None,
+        self,
+        zip_file_path: str,
+        folder_path: str,
+        files_to_extract: list[str] | None = None,
     ) -> None:
         """
         Unzip a file into a folder, use zipfile instead of subprocess
@@ -602,7 +604,6 @@ class LocalEnv(Env[ASpecificLocalConf]):
         running_extra_volume: Mapping = MappingProxyType({}),
         **kwargs: dict,
     ) -> tuple[str, int]:
-
         # Handle volume links
         volumes = {}
         if self.conf.extra_volumes is not None:
@@ -1355,7 +1356,6 @@ class DockerEnv(Env[DockerConf]):
 
         # Process logs with tail mode
         if use_tail_mode:
-
             log_buffer: deque[str] = deque(maxlen=self.conf.terminal_tail_lines)
 
             def format_tail_display() -> Text:
@@ -2003,7 +2003,9 @@ class KubernetesEnv(Env[KubernetesConf]):
             env=[V.V1EnvVar(name=k, value=str(v)) for k, v in env.items()],
             volume_mounts=volume_mounts or None,
             resources=self._build_resources(),
-            working_dir=self.conf.mount_path if any(m.mount_path == self.conf.mount_path for m in volume_mounts) else None,
+            working_dir=self.conf.mount_path
+            if any(m.mount_path == self.conf.mount_path for m in volume_mounts)
+            else None,
         )
 
         pod_spec_kwargs: dict[str, Any] = {
@@ -2182,11 +2184,7 @@ class KubernetesEnv(Env[KubernetesConf]):
         """Poll Job status until completion and return (exit_code, reason)."""
         batch = self._get_batch_api()
         core = self._get_core_api()
-        deadline = (
-            time.time() + self.conf.running_timeout_period + 60
-            if self.conf.running_timeout_period
-            else None
-        )
+        deadline = time.time() + self.conf.running_timeout_period + 60 if self.conf.running_timeout_period else None
         while True:
             if deadline and time.time() > deadline:
                 raise TimeoutError(f"Job '{job_name}' did not finish within timeout.")
